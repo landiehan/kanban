@@ -1,6 +1,28 @@
-import {render, screen} from '@testing-library/react'
+import {render, screen, waitFor} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import {rest} from 'msw'
+import {setupServer} from 'msw/node'
 import TodoWidget from '.'
+import {API} from '../api'
+
+const server = setupServer(
+  rest.get(API.todos, (req, res, ctx) => {
+    return res(
+      ctx.json([
+        {
+          title: 'Make coffee',
+        },
+        {
+          title: 'Drink coffee',
+        },
+      ])
+    )
+  })
+)
+
+beforeAll(() => server.listen())
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
 
 describe('🎃 Todo Widget', () => {
   describe('Initially', () => {
@@ -34,6 +56,41 @@ describe('🎃 Todo Widget', () => {
       await user.click(addTodoButton)
 
       expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+  })
+
+  it('renders "No todos yet" when todo list is empty', async () => {
+    server.use(
+      rest.get(API.todos, (req, res, ctx) => {
+        return res(ctx.json([]))
+      })
+    )
+    render(<TodoWidget />)
+
+    await waitFor(() => {
+      expect(screen.getByText('No todos yet')).toBeInTheDocument()
+    })
+  })
+
+  it('renders todos', async () => {
+    render(<TodoWidget />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Make coffee')).toBeInTheDocument()
+      expect(screen.getByText('Drink coffee')).toBeInTheDocument()
+    })
+  })
+
+  it('renders "500 Error" when server is down 👻', async () => {
+    server.use(
+      rest.get(API.todos, (req, res, ctx) => {
+        return res(ctx.status(500))
+      })
+    )
+    render(<TodoWidget />)
+
+    await waitFor(() => {
+      expect(screen.getByText('500 Error')).toBeInTheDocument()
     })
   })
 })
